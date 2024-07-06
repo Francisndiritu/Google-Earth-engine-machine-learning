@@ -1,0 +1,94 @@
+
+
+
+import ee
+import geemap
+
+Map= geemap.Map()
+Map
+
+
+
+# !pip install geopandas
+import geopandas as gpd
+
+
+
+
+from google.colab import drive
+# drive.mount('/content/drive')
+
+
+point = ee.Geometry.Rectangle([37, -1, 37, 2])
+
+image = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED") \
+    .filterBounds(point) \
+    .filterDate('2019-01-01', '2019-12-31') \
+    .sort('CLOUD_COVER') \
+    .first() \
+    .select('B[1-7]')
+
+vis_params = {
+    'min': 0,
+    'max': 3000,
+    'bands': ['B5', 'B4', 'B3']
+}
+
+Map.centerObject(point, 8)
+Map.addLayer(image, vis_params, "Landsat-8")
+
+
+Imageprops = geemap.image_props(image)
+Imageprops.getInfo()
+
+Imageprops.get('IMAGE_DATE').getInfo()
+
+# props.get('CLOUD_COVER').getInfo()
+
+
+region = Map.user_roi
+
+
+
+region = Map.user_roi
+training = image.sample(**{
+    'region' : region,
+    'scale' : 30,
+    'numPixels':5000,
+    'seed':0,
+    'geometries':True
+})
+
+Map.addLayer(training,{},'training',False)
+Map
+
+n_clusters = 5
+clusterer = ee.Clusterer.wekaKMeans(n_clusters).train(training)
+
+# Cluster the input using the trained clusterer.
+result = image.cluster(clusterer)
+
+# # Display the clusters with random colors.
+Map.addLayer(result.randomVisualizer(), {}, 'clusters')
+Map
+
+#define legend
+legend_keys = ['aa','bb','cc','dd','ect']
+legend_colors = ['#8DD3C7', '#FFFFB3', '#BEBADA', '#FB8072', '#80B1D3']
+#reclassify the map
+
+# result = result.remap([0,1,2,3,4,],[1,2,3,4,5])
+Map.addLayer(result,{'min':1,'max':5,'palette':legend_colors},'Labelled clusters')
+Map.add_legend(legend_keys =legend_keys,legend_colors=legend_colors,position='bottomright')
+Map
+
+
+print('Change layer opacity:')
+cluster_layer = Map.layers[-1]
+cluster_layer.interact(opacity=(0,1,0.1))
+import os
+out_dir = os.path.join(os.path.expanduser('~'),'Downloads')
+out_file = os.path.join(out_dir,'cluster1.tif')
+
+
+geemap.ee_export_image_to_drive(result, description='clusters',folder='cluster export',scale =90)
